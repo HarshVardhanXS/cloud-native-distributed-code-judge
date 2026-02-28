@@ -6,6 +6,11 @@ from sqlalchemy.orm import Session
 from datetime import timedelta
 import json
 import logging
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from database import init_db, get_db
 from models import User, Problem, Submission
@@ -25,12 +30,37 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+# Configure CORS origins from environment
+def get_cors_origins() -> list[str]:
+    """
+    Get CORS origins from environment variable.
+    
+    CORS_ORIGINS env var should be comma-separated list of origins.
+    Defaults to http://localhost:3000 for development.
+    
+    Examples:
+        - http://localhost:3000
+        - http://localhost:3000,https://example.com
+        - https://app.example.com,https://staging.example.com
+    """
+    origins_env = os.getenv("CORS_ORIGINS", "http://localhost:3000")
+    origins = [origin.strip() for origin in origins_env.split(",") if origin.strip()]
+    return origins
+
+
 # Lifespan context manager for startup/shutdown events
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     init_db()
     logger.info("Database initialized")
+    
+    # Log CORS configuration
+    cors_origins = get_cors_origins()
+    logger.info(f"CORS enabled for {len(cors_origins)} origin(s):")
+    for origin in cors_origins:
+        logger.info(f"  - {origin}")
+    
     yield
     # Shutdown
     logger.info("Application shutting down")
@@ -44,10 +74,10 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS middleware
+# CORS middleware - configured from environment
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
