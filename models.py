@@ -17,6 +17,7 @@ class User(Base):
     is_active = Column(Boolean, default=True)
 
     submissions = relationship("Submission", back_populates="user")
+    discussions = relationship("Discussion", back_populates="user")
 
 
 class Problem(Base):
@@ -31,6 +32,7 @@ class Problem(Base):
 
     submissions = relationship("Submission", back_populates="problem")
     testcases = relationship("TestCase", back_populates="problem")
+    discussions = relationship("Discussion", back_populates="problem")
 
 
 class TestCase(Base):
@@ -52,9 +54,23 @@ class Submission(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     problem_id = Column(Integer, ForeignKey("problems.id"), nullable=False)
     code = Column(Text, nullable=False)
-    status = Column(String, default="pending")  # pending, passed, failed, error
+    status = Column(String, default="queued")  # queued, running, accepted, wrong_answer, error
+    runtime_ms = Column(Integer, nullable=True)
     result = Column(Text)  # JSON output
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="submissions")
     problem = relationship("Problem", back_populates="submissions")
+
+
+class Discussion(Base):
+    __tablename__ = "discussions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    problem_id = Column(Integer, ForeignKey("problems.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="discussions")
+    problem = relationship("Problem", back_populates="discussions")

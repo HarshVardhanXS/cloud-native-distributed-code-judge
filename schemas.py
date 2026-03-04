@@ -38,7 +38,7 @@ class ProblemBase(BaseModel):
 
 
 class ProblemCreate(ProblemBase):
-    pass
+    test_cases: Optional[list["TestCaseCreate"]] = None
 
 
 class ProblemUpdate(BaseModel):
@@ -78,3 +78,43 @@ class SubmissionResponse(SubmissionBase):
 
 class SubmissionWithProblem(SubmissionResponse):
     problem: ProblemResponse
+
+
+class TestCaseBase(BaseModel):
+    input_data: str
+    expected_output: str
+    is_hidden: bool = True
+
+
+class TestCaseCreate(TestCaseBase):
+    pass
+
+
+class TestCaseResponse(TestCaseBase):
+    id: int
+    problem_id: int
+
+    class Config:
+        from_attributes = True
+
+
+class LeaderboardEntry(BaseModel):
+    user_id: int
+    username: str
+    solved_problems: int
+    total_submissions: int
+    accepted_submissions: int
+    success_rate: float
+
+
+class DiscussionCreate(BaseModel):
+    content: str
+
+
+class DiscussionResponse(BaseModel):
+    id: int
+    problem_id: int
+    user_id: int
+    username: str
+    content: str
+    created_at: datetime

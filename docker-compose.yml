@@ -1,0 +1,64 @@
+version: "3.9"
+
+x-app-env: &app-env
+  DATABASE_URL: ${DATABASE_URL}
+  REDIS_URL: ${REDIS_URL}
+  SECRET_KEY: ${SECRET_KEY}
+  AZURE_SUBSCRIPTION_ID: ${AZURE_SUBSCRIPTION_ID}
+  AZURE_EXECUTION_RESOURCE_GROUP: ${AZURE_EXECUTION_RESOURCE_GROUP}
+  AZURE_LOCATION: ${AZURE_LOCATION}
+  AZURE_EXECUTION_IMAGE: ${AZURE_EXECUTION_IMAGE}
+  AZURE_EXECUTION_REGISTRY_SERVER: ${AZURE_EXECUTION_REGISTRY_SERVER:-}
+  AZURE_EXECUTION_REGISTRY_USERNAME: ${AZURE_EXECUTION_REGISTRY_USERNAME:-}
+  AZURE_EXECUTION_REGISTRY_PASSWORD: ${AZURE_EXECUTION_REGISTRY_PASSWORD:-}
+  AZURE_EXECUTION_TIMEOUT_SECONDS: ${AZURE_EXECUTION_TIMEOUT_SECONDS:-30}
+  AZURE_EXECUTION_CPU: ${AZURE_EXECUTION_CPU:-0.5}
+  AZURE_EXECUTION_MEMORY_GB: ${AZURE_EXECUTION_MEMORY_GB:-1.0}
+  AZURE_EXECUTION_POLL_INTERVAL_SECONDS: ${AZURE_EXECUTION_POLL_INTERVAL_SECONDS:-2}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+  AZURE_BLOB_CONNECTION: ${AZURE_BLOB_CONNECTION:-}
+
+services:
+  backend:
+    build: .
+    command: uvicorn app:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment: *app-env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  worker:
+    build: .
+    command: celery -A tasks worker --loglevel=info
+    environment: *app-env
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A tasks inspect ping -d \"celery@$HOSTNAME\" -t 5 >/dev/null 2>&1 || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped

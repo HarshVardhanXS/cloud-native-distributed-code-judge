@@ -2,23 +2,25 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { login, setAuthToken } from "../../lib/api";
+import { login, register, setAuthToken } from "../../lib/api";
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleLogin = async () => {
+  const handleRegister = async () => {
     setError("");
     setLoading(true);
     try {
-      const data = await login(username, password);
-      setAuthToken(data.access_token);
+      await register({ username, email, password });
+      const token = await login(username, password);
+      setAuthToken(token.access_token);
       window.location.href = "/";
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Invalid credentials");
+      setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
       setLoading(false);
     }
@@ -26,8 +28,7 @@ export default function LoginPage() {
 
   return (
     <main className="page-shell panel" style={{ maxWidth: 460 }}>
-      <h1 style={{ marginTop: 0 }}>Login</h1>
-      <p style={{ color: "var(--muted)" }}>Sign in to solve problems, submit code, and track your progress.</p>
+      <h1 style={{ marginTop: 0 }}>Create Account</h1>
       <div className="stack">
         <input
           className="field"
@@ -37,18 +38,25 @@ export default function LoginPage() {
         />
         <input
           className="field"
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <input
+          className="field"
           type="password"
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <button className="btn" onClick={handleLogin} disabled={loading || !username || !password}>
-          {loading ? "Logging in..." : "Login"}
+        <button className="btn" onClick={handleRegister} disabled={loading || !username || !email || !password}>
+          {loading ? "Creating account..." : "Register"}
         </button>
       </div>
       {error ? <p className="error" style={{ marginTop: 10 }}>{error}</p> : null}
       <p style={{ marginTop: 16, color: "var(--muted)" }}>
-        New user? <Link href="/register">Create an account</Link>
+        Already have an account? <Link href="/login">Login</Link>
       </p>
     </main>
   );

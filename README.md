@@ -21,27 +21,43 @@ A lightweight, cloud-based system design playground combining LeetCode-style pro
 - Non-root user execution
 - Azure-ready deployment scripts
 
+## Deployment Platforms
+
+This project is deployed and maintained across:
+
+- **Azure**: cloud deployment and execution infrastructure (App Service / ACI / ACR workflow via `azure_deploy.sh`).
+- **Docker**: containerized runtime for local and cloud parity (`Dockerfile`, `docker-compose.yml`).
+- **GitHub**: source repository, issue tracking, and collaboration workflow.
+
 ## Architecture
 
-```
-Cloud-Native Code Judge Structure
----------------------------------
-
-FastAPI Application
-├── Authentication (JWT)
-├── Problem Management
-├── Submission Handling
-└── Code Execution (Docker Sandbox)
-
-Database
-├── Users
-├── Problems
-└── Submissions
-
-Execution Engine
-└── Docker Container (python:3.11-slim)
+```mermaid
+flowchart LR
+    U[Users / Browser] --> F[Next.js Frontend]
+    F --> B[FastAPI Backend]
+    B --> DB[(PostgreSQL / SQLite)]
+    B --> R[(Redis - optional)]
+    B --> Q[Celery Queue]
+    Q --> W[Execution Worker]
+    W --> X[Azure ACI or Local Fallback Executor]
+    B --> L[Leaderboard Aggregation]
+    L --> DB
 ```
 
+## Request Flowchart
+
+```mermaid
+flowchart TD
+    A[Open Dashboard] --> B[Load Problems + Leaderboard]
+    B --> C[Open Problem Detail]
+    C --> D[Fetch Description, Examples, Constraints, Answer Key]
+    D --> E[Write Solution / Design Answer]
+    E --> F[Submit]
+    F --> G[Create Submission Record]
+    G --> H[Execute Against Test Cases]
+    H --> I[Persist Verdict, Runtime, Analytics Data]
+    I --> J[Update History + Leaderboard + Discussions View]
+```
 ## Project Structure
 
 ```
@@ -321,13 +337,52 @@ az container create \
 
 Access: http://code-judge-demo.eastus.azurecontainer.io:8000
 
+## Vercel Deployment
+
+Deploy this monorepo as two Vercel projects:
+
+1) **Backend API project** (root directory: repository root)
+- Framework preset: `Other`
+- Build uses `vercel.json` + `api/index.py` (FastAPI serverless entrypoint)
+- Required env vars:
+  - `DATABASE_URL` (PostgreSQL recommended on Vercel)
+  - `SECRET_KEY` (32+ chars)
+- Optional env vars:
+  - `REDIS_URL` (for true async Celery workers/caching; without it Celery runs eager/in-process)
+  - `AZURE_SUBSCRIPTION_ID`
+  - `AZURE_EXECUTION_RESOURCE_GROUP`
+  - `AZURE_LOCATION`
+  - `AZURE_EXECUTION_IMAGE`
+  - `AZURE_EXECUTION_REGISTRY_SERVER`
+  - `AZURE_EXECUTION_REGISTRY_USERNAME`
+  - `AZURE_EXECUTION_REGISTRY_PASSWORD`
+  - `LOCAL_EXECUTION_TIMEOUT_SECONDS` (default `8`; used by local fallback executor when ACI is unavailable)
+
+Submission execution behavior:
+- If Azure ACI settings are configured and Azure CLI is available, submissions run in ACI.
+- Otherwise, the API falls back to local subprocess execution (functional, but not equivalent to a hardened sandbox).
+
+2) **Frontend project** (root directory: `cloudjudge-frontend`)
+- Framework preset: `Next.js`
+- Required env var:
+  - `NEXT_PUBLIC_API_BASE_URL=https://<your-backend-vercel-domain>`
+
+3) **CORS on backend**
+- Set `CORS_ORIGINS` to your frontend URL, for example:
+  - `https://your-frontend.vercel.app`
+  - Multiple allowed origins can be comma-separated.
+
 ## Environment Variables
 
 ```
 SECRET_KEY=your-secret-key-here
-DATABASE_URL=sqlite:///./judge.db
-DEBUG=false
-LOG_LEVEL=INFO
+DATABASE_URL=postgresql://username:password@hostname:5432/database?sslmode=require
+REDIS_URL=rediss://:password@host:6380/0
+CORS_ORIGINS=http://localhost:3000,https://your-frontend.vercel.app
+AZURE_SUBSCRIPTION_ID=
+AZURE_EXECUTION_RESOURCE_GROUP=
+AZURE_LOCATION=
+LOCAL_EXECUTION_TIMEOUT_SECONDS=8
 ```
 
 ## Performance

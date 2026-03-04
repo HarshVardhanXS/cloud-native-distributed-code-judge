@@ -1,145 +1,95 @@
+import logging
+
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from models import Base, User, Problem, Submission, TestCase
-import os
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./judge.db")
+from config import DATABASE_URL
+from models import Base, Problem
 
-engine = create_engine(
-    DATABASE_URL, connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
-)
+logger = logging.getLogger(__name__)
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False)
+_engine = None
+_db_ready = False
 
-SEED_PROBLEMS = [
-    # 10 coding problems
-    {
-        "title": "Two Sum",
-        "description": "Given an array of integers and a target, return indices of the two numbers that add up to target.",
-        "difficulty": "Easy",
-        "tags": ["Array", "Hash Table"],
-    },
-    {
-        "title": "Valid Parentheses",
-        "description": "Determine if the input string of brackets is valid.",
-        "difficulty": "Easy",
-        "tags": ["Stack", "String"],
-    },
-    {
-        "title": "Merge Two Sorted Lists",
-        "description": "Merge two sorted linked lists and return the merged list.",
-        "difficulty": "Easy",
-        "tags": ["Linked List", "Recursion"],
-    },
-    {
-        "title": "Maximum Subarray",
-        "description": "Find the contiguous subarray with the largest sum and return its sum.",
-        "difficulty": "Medium",
-        "tags": ["Array", "Dynamic Programming"],
-    },
-    {
-        "title": "Product of Array Except Self",
-        "description": "Return an array where each element is the product of all other elements.",
-        "difficulty": "Medium",
-        "tags": ["Array", "Prefix Sum"],
-    },
-    {
-        "title": "Group Anagrams",
-        "description": "Group strings that are anagrams of each other.",
-        "difficulty": "Medium",
-        "tags": ["Hash Table", "String", "Sorting"],
-    },
-    {
-        "title": "Top K Frequent Elements",
-        "description": "Return the k most frequent elements in an array.",
-        "difficulty": "Medium",
-        "tags": ["Heap", "Hash Table", "Bucket Sort"],
-    },
-    {
-        "title": "Number of Islands",
-        "description": "Count the number of islands in a 2D grid.",
-        "difficulty": "Medium",
-        "tags": ["DFS", "BFS", "Matrix"],
-    },
-    {
-        "title": "Median of Two Sorted Arrays",
-        "description": "Find the median of two sorted arrays in logarithmic time.",
-        "difficulty": "Hard",
-        "tags": ["Binary Search", "Array"],
-    },
-    {
-        "title": "Trapping Rain Water",
-        "description": "Compute how much water can be trapped after raining.",
-        "difficulty": "Hard",
-        "tags": ["Two Pointers", "Array", "Stack"],
-    },
-    # 5 algorithmic challenges
-    {
-        "title": "Longest Increasing Subsequence",
-        "description": "Return the length of the longest strictly increasing subsequence.",
-        "difficulty": "Medium",
-        "tags": ["Dynamic Programming", "Binary Search"],
-    },
-    {
-        "title": "Dijkstra Shortest Path",
-        "description": "Compute shortest path distances from a source in a weighted graph with non-negative weights.",
-        "difficulty": "Medium",
-        "tags": ["Graph", "Shortest Path", "Heap"],
-    },
-    {
-        "title": "Kruskal Minimum Spanning Tree",
-        "description": "Find the total weight of the minimum spanning tree of an undirected weighted graph.",
-        "difficulty": "Hard",
-        "tags": ["Graph", "Union Find", "Greedy"],
-    },
-    {
-        "title": "Knapsack 0/1",
-        "description": "Maximize value in a knapsack with weight constraints where each item can be picked once.",
-        "difficulty": "Medium",
-        "tags": ["Dynamic Programming"],
-    },
-    {
-        "title": "N-Queens",
-        "description": "Place n queens on an n x n chessboard so no two queens attack each other.",
-        "difficulty": "Hard",
-        "tags": ["Backtracking", "Recursion"],
-    },
-    # 5 system design questions
-    {
-        "title": "Design URL Shortener",
-        "description": "Design a scalable URL shortening service similar to bit.ly.",
-        "difficulty": "Medium",
-        "tags": ["System Design", "Scalability", "Databases"],
-    },
-    {
-        "title": "Design Rate Limiter",
-        "description": "Design a distributed rate limiter for APIs with strict and burst limits.",
-        "difficulty": "Hard",
-        "tags": ["System Design", "Distributed Systems"],
-    },
-    {
-        "title": "Design Real-Time Chat Service",
-        "description": "Design a real-time chat system supporting private and group messaging.",
-        "difficulty": "Medium",
-        "tags": ["System Design", "Realtime", "WebSocket"],
-    },
-    {
-        "title": "Design Distributed Cache",
-        "description": "Design a distributed caching layer with eviction policies and high availability.",
-        "difficulty": "Hard",
-        "tags": ["System Design", "Caching", "Consistency"],
-    },
-    {
-        "title": "Design Notification System",
-        "description": "Design a high-throughput notification system for email, SMS, and push channels.",
-        "difficulty": "Medium",
-        "tags": ["System Design", "Messaging", "Queues"],
-    },
-]
+
+def _build_seed_problems() -> list[dict[str, object]]:
+    coding_topics = [
+        "Arrays", "Strings", "Hashing", "Prefix Sums", "Sliding Window",
+        "Two Pointers", "Stacks", "Queues", "Linked Lists", "Binary Search",
+        "Greedy", "Dynamic Programming", "Recursion", "Backtracking", "Trees",
+        "Binary Trees", "Graphs", "Shortest Path", "Topological Sort", "Heaps",
+        "Tries", "Bit Manipulation", "Math", "Union Find", "Intervals",
+    ]
+    coding_problems: list[dict[str, object]] = []
+    for idx in range(1, 101):
+        topic = coding_topics[(idx - 1) % len(coding_topics)]
+        difficulty = "Easy" if idx % 5 in (1, 2) else ("Medium" if idx % 5 in (3, 4) else "Hard")
+        coding_problems.append(
+            {
+                "title": f"Coding Challenge {idx}: {topic} Mastery",
+                "description": (
+                    f"You are given a real-world {topic.lower()} scenario that requires designing a robust algorithm. "
+                    "Write a function named `solution` that handles edge cases, large input sizes, and deterministic output. "
+                    "Your implementation should include clear reasoning about complexity and correctness. "
+                    "Provide output in exact format and optimize for interview-level constraints."
+                ),
+                "difficulty": difficulty,
+                "tags": [topic, "Coding", "Interview Prep"],
+            }
+        )
+
+    system_design_titles = [
+        "Design LeetCode Platform",
+        "Design URL Shortener",
+        "Design Rate Limiter",
+        "Design Real-Time Chat Service",
+        "Design Distributed Cache",
+        "Design Notification System",
+        "Design Video Streaming Platform",
+        "Design Online Judge for Competitions",
+        "Design Food Delivery Platform",
+        "Design Ride Sharing Platform",
+        "Design Search Autocomplete",
+        "Design API Gateway",
+        "Design Metrics & Monitoring System",
+        "Design News Feed",
+        "Design Cloud File Storage",
+        "Design Feature Flag Service",
+        "Design Multi-Region Payments Router",
+        "Design IoT Telemetry Pipeline",
+        "Design Ads Auction Service",
+        "Design Collaborative Whiteboard",
+    ]
+    system_design_problems: list[dict[str, object]] = []
+    for title in system_design_titles:
+        system_design_problems.append(
+            {
+                "title": title,
+                "description": (
+                    "Understanding the Problem:\n"
+                    "1) Define functional requirements and explicitly call out out-of-scope items.\n"
+                    "2) Define non-functional requirements including scalability, availability, latency, and security.\n"
+                    "3) Propose core entities and API contracts.\n"
+                    "4) Design a high-level architecture, data flow, and component responsibilities.\n"
+                    "5) Discuss deep dives: scaling strategy, caching, queueing, failure handling, and observability.\n"
+                    "6) Provide final trade-off summary and why the chosen design is appropriate."
+                ),
+                "difficulty": "Hard",
+                "tags": ["System Design", "Architecture", "Scalability"],
+            }
+        )
+
+    return coding_problems + system_design_problems
+
+
+SEED_PROBLEMS = _build_seed_problems()
 
 
 def seed_problems() -> None:
-    """Seed at least 20 problems if they do not already exist."""
+    """Seed at least 120 problems if they do not already exist."""
+    get_engine()
     db = SessionLocal()
     try:
         existing_titles = {row[0] for row in db.query(Problem.title).all()}
@@ -160,14 +110,41 @@ def seed_problems() -> None:
         db.close()
 
 
-def init_db():
-    """Initialize all database tables"""
-    Base.metadata.create_all(bind=engine)
-    seed_problems()
+def get_engine():
+    """Create SQLAlchemy engine lazily and bind sessionmaker once."""
+    global _engine
+    if _engine is None:
+        _engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+        SessionLocal.configure(bind=_engine)
+    return _engine
+
+
+def is_db_ready() -> bool:
+    """Return last known database initialization state."""
+    return _db_ready
+
+
+def init_db() -> bool:
+    """Initialize database tables during explicit startup only."""
+    global _db_ready
+    try:
+        Base.metadata.create_all(bind=get_engine())
+        seed_problems()
+        _db_ready = True
+        return True
+    except SQLAlchemyError as exc:
+        _db_ready = False
+        logger.warning("Database initialization failed: %s", exc)
+        return False
+    except Exception as exc:
+        _db_ready = False
+        logger.exception("Unexpected database initialization failure: %s", exc)
+        return False
 
 
 def get_db() -> Session:
     """Get database session"""
+    get_engine()
     db = SessionLocal()
     try:
         yield db
